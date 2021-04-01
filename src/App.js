@@ -1,4 +1,13 @@
-import {atom, RecoilRoot, selector, selectorFamily, useRecoilState, useRecoilValue, useSetRecoilState} from 'recoil';
+import {
+  atom,
+  RecoilRoot,
+  selector,
+  selectorFamily, useRecoilCallback,
+  useRecoilState,
+  useRecoilValue,
+  useSetRecoilState,
+  waitForAll, waitForNone
+} from 'recoil';
 import {useState, Suspense} from 'react';
 import {ErrorBoundary} from "react-error-boundary";
 
@@ -10,6 +19,7 @@ async function myDBQuery({userID}) {
       resolve({
         id: userID,
         name: `Name of ${userID}`,
+        friends: [1, 2, 3, 4],
         error: userID < 0 ? 'There was an error while attempting to retrieve user info.' : undefined,
       });
     }, 2000);
@@ -19,6 +29,7 @@ async function myDBQuery({userID}) {
 // @RECOIL: Atom
 const currentUserIDState = atom({
   key: 'currentUserIDState',
+  default: null,
 });
 
 // @RECOIL: Async Selector a.k.a Query
@@ -50,6 +61,46 @@ const userNameQuery = selectorFamily({
   },
 })
 
+const userInfoQuery = selectorFamily({
+  key: 'UserInfoQuery',
+  get: userID => async () => {
+    const response = await myDBQuery({userID});
+    if (response.error) {
+      throw response.error;
+    }
+
+    return response;
+  },
+})
+
+// Data-Flow Graph
+// @RECOIL: Query that uses Query inside
+const currentUserInfoQuery = selector({
+  key: 'currentUserInfoQuery',
+  get: ({get}) => get(userInfoQuery(get(currentUserIDState))),
+});
+
+const friendsInfoQuery = selector({
+  key: 'friendsInfoQuery',
+  get: ({get}) => {
+    const {friends} = get(currentUserInfoQuery);
+    // return friends.map(friendID => get(userInfoQuery(friendID)))
+
+    // Concurrent Requests with waitForAll
+    return get(waitForAll(
+        friends.map(friendID =>  userInfoQuery(friendID))
+    ));
+
+    // Concurrent Request with waitForNone
+    // const friendLoadables = get(waitForNone(
+    //     friends.map(friendID =>  userInfoQuery(friendID))
+    // ));
+    // return friendLoadables
+    //     .filter(({state}) => state === 'hasValue')
+    //     .map(({contents}) => contents);
+  },
+});
+
 function App() {
   return (
     // @RECOIL: Wrap
@@ -68,8 +119,32 @@ function App() {
 }
 
 function CurrentUserInfo() {
-  const userName = useRecoilValue(currentUserNameQuery);
-  return <div>{userName}</div>
+  const currentUser = useRecoilValue(currentUserInfoQuery);
+  const friends = useRecoilValue(friendsInfoQuery);
+  const setCurrentUserID = useSetRecoilState(currentUserIDState);
+  // const userName = useRecoilValue(currentUserNameQuery);
+
+  // Pre-Fetching
+  const changeUser = useRecoilCallback(({snapshot, set}) => userID => {
+    snapshot.getLoadable(userInfoQuery(userID)); // pre-fetch user info
+    set(currentUserIDState, userID);
+  });
+
+  return (
+      <div>
+        <h1>{currentUser.name}</h1>
+        <ul>
+          {friends.map(friend =>
+              <li key={friend.id} onClick={() => {
+                setCurrentUserID(friend.id)
+                // changeUser(friends.id);
+              }}>
+                {friend.name}
+              </li>
+          )}
+        </ul>
+      </div>
+  )
 }
 
 function UserInfo({userID}) {
