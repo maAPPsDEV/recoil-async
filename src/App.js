@@ -2,14 +2,16 @@ import {
   atom,
   RecoilRoot,
   selector,
-  selectorFamily, useRecoilCallback,
+  selectorFamily,
+  useRecoilCallback,
   useRecoilState,
   useRecoilValue,
   useSetRecoilState,
-  waitForAll, waitForNone
+  waitForAll,
+  waitForNone
 } from 'recoil';
 import {useState, Suspense} from 'react';
-import {ErrorBoundary} from "react-error-boundary";
+import {ErrorBoundary} from 'react-error-boundary';
 
 // A fake async function that returns results in 2 seconds.
 // It returns an error result when the userID is less than zero.
